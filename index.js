@@ -1,0 +1,200 @@
+require('dotenv').config();
+const { Client, GatewayIntentBits, Events } = require('discord.js');
+
+const {
+  DISCORD_TOKEN,
+  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_ID,
+  SOURCE_CHANNEL_IDS,
+  ALLOWED_USER_IDS = '',
+  PREFIX = '!call',
+  CHANNEL_NAME = 'DUAL CAPITAL',
+  DISCLAIMER = '⚠️ Conteúdo informativo. Não é recomendação de investimento. Opere com gestão de risco.',
+} = process.env;
+
+for (const [name, value] of Object.entries({
+  DISCORD_TOKEN,
+  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_ID,
+  SOURCE_CHANNEL_IDS,
+})) {
+  if (!value) {
+    console.error(`Variável ${name} não definida no arquivo .env`);
+    process.exit(1);
+  }
+}
+
+const sourceChannels = new Set(
+  SOURCE_CHANNEL_IDS.split(',').map((id) => id.trim()).filter(Boolean)
+);
+
+const allowedUsers = new Set(
+  ALLOWED_USER_IDS.split(',').map((id) => id.trim()).filter(Boolean)
+);
+
+// ---------- Utilidades ----------
+
+const escapeHtml = (text) =>
+  String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const normalizeKey = (key) =>
+  key
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+/**
+ * Lê mensagens no formato:
+ *
+ * !call
+ * ativo: BTCUSDT
+ * direcao: LONG
+ * entrada: 65000
+ * stop: 64000
+ * alvo1: 66000
+ * alvo2: 67000
+ * obs: texto livre
+ */
+function parseCall(content) {
+  const body = content.slice(PREFIX.length).trim();
+  const data = { alvos: [] };
+  let found = false;
+
+  for (const line of body.split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx === -1) continue;
+
+    const key = normalizeKey(line.slice(0, idx));
+    const value = line.slice(idx + 1).trim();
+    if (!value) continue;
+
+    if (['ativo', 'par', 'ticker', 'moeda'].includes(key)) data.ativo = value;
+    else if (['direcao', 'tipo', 'lado', 'operacao'].includes(key)) data.direcao = value;
+    else if (['entrada', 'preco', 'entry'].includes(key)) data.entrada = value;
+    else if (['stop', 'sl', 'stoploss'].includes(key)) data.stop = value;
+    else if (/^(alvo|alvos|tp|take|target)\s*\d*$/.test(key)) data.alvos.push(value);
+    else if (['alavancagem', 'lev', 'leverage'].includes(key)) data.alavancagem = value;
+    else if (['obs', 'observacao', 'observacoes', 'nota'].includes(key)) data.obs = value;
+    else continue;
+
+    found = true;
+  }
+
+  return found ? data : null;
+}
+
+function directionEmoji(direcao = '') {
+  const d = normalizeKey(direcao);
+  if (/(long|compra|buy)/.test(d)) return '🟢';
+  if (/(short|venda|sell)/.test(d)) return '🔴';
+  return '⚪';
+}
+
+function formatCall(data) {
+  const lines = [`📊 <b>NOVA CALL | ${escapeHtml(CHANNEL_NAME)}</b>`, ''];
+
+  if (data.ativo) lines.push(`🪙 <b>Ativo:</b> ${escapeHtml(data.ativo)}`);
+  if (data.direcao)
+    lines.push(`${directionEmoji(data.direcao)} <b>Direção:</b> ${escapeHtml(data.direcao)}`);
+  if (data.alavancagem) lines.push(`⚙️ <b>Alavancagem:</b> ${escapeHtml(data.alavancagem)}`);
+  if (data.entrada) lines.push(`🎯 <b>Entrada:</b> ${escapeHtml(data.entrada)}`);
+  if (data.stop) lines.push(`🛑 <b>Stop:</b> ${escapeHtml(data.stop)}`);
+
+  data.alvos.forEach((alvo, i) => {
+    lines.push(`✅ <b>Alvo ${i + 1}:</b> ${escapeHtml(alvo)}`);
+  });
+
+  if (data.obs) lines.push('', `📝 <b>Obs:</b> ${escapeHtml(data.obs)}`);
+  if (DISCLAIMER) lines.push('', `<i>${escapeHtml(DISCLAIMER)}</i>`);
+
+  return lines.join('\n');
+}
+
+// ---------- Telegram ----------
+
+async function telegram(method, payload) {
+  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(`Telegram ${method}: ${json.description}`);
+  return json;
+}
+
+async function sendToTelegram(text, imageUrls) {
+  const base = { chat_id: TELEGRAM_CHAT_ID, parse_mode: 'HTML' };
+
+  // Legenda de foto no Telegram tem limite de 1024 caracteres
+  const fitsCaption = text.length <= 1024;
+
+  if (imageUrls.length === 0) {
+    return telegram('sendMessage', { ...base, text });
+  }
+
+  if (imageUrls.length === 1) {
+    if (fitsCaption) {
+      return telegram('sendPhoto', { ...base, photo: imageUrls[0], caption: text });
+    }
+    await telegram('sendPhoto', { chat_id: TELEGRAM_CHAT_ID, photo: imageUrls[0] });
+    return telegram('sendMessage', { ...base, text });
+  }
+
+  const media = imageUrls.slice(0, 10).map((url, i) => ({
+    type: 'photo',
+    media: url,
+    ...(i === 0 && fitsCaption ? { caption: text, parse_mode: 'HTML' } : {}),
+  }));
+  await telegram('sendMediaGroup', { chat_id: TELEGRAM_CHAT_ID, media });
+  if (!fitsCaption) await telegram('sendMessage', { ...base, text });
+}
+
+// ---------- Discord ----------
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.once(Events.ClientReady, (c) => {
+  console.log(`Bot online como ${c.user.tag}`);
+  console.log(`Monitorando ${sourceChannels.size} canal(is) e ${allowedUsers.size} usuário(s) autorizado(s)`);
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (message.author.bot) return;
+    if (!sourceChannels.has(message.channelId)) return;
+    if (!allowedUsers.has(message.author.id)) return;
+    if (!message.content.toLowerCase().startsWith(PREFIX.toLowerCase())) return;
+
+    const parsed = parseCall(message.content);
+
+    if (!parsed) {
+      await message.reply(
+        `❌ Formato não reconhecido. Use:\n\`\`\`\n${PREFIX}\nativo: BTCUSDT\ndirecao: LONG\nentrada: 65000\nstop: 64000\nalvo1: 66000\nalvo2: 67000\nobs: opcional\n\`\`\``
+      );
+      return;
+    }
+
+    const images = [...message.attachments.values()]
+      .filter((a) => a.contentType && a.contentType.startsWith('image/'))
+      .map((a) => a.url);
+
+    await sendToTelegram(formatCall(parsed), images);
+    await message.react('✅');
+    console.log(`Call enviada por ${message.author.tag}`);
+  } catch (err) {
+    console.error('Erro ao enviar call:', err);
+    try {
+      await message.react('❌');
+    } catch (_) {}
+  }
+});
+
+client.login(DISCORD_TOKEN);
