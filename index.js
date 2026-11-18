@@ -20,6 +20,7 @@ const {
   SOURCE_CHANNEL_IDS,
   ALLOWED_USER_IDS = '',
   PREFIX = '!call',
+  REQUIRE_PREFIX = 'false',
   CHANNEL_NAME = 'DUAL CAPITAL',
   DISCLAIMER = '⚠️ Conteúdo informativo. Não é recomendação de investimento. Opere com gestão de risco.',
 } = process.env;
@@ -68,8 +69,7 @@ const normalizeKey = (key) =>
  * alvo2: 67000
  * obs: texto livre
  */
-function parseCall(content) {
-  const body = content.slice(PREFIX.length).trim();
+function parseCall(body) {
   const data = { alvos: [] };
   let found = false;
 
@@ -194,27 +194,31 @@ client.on(Events.MessageCreate, async (message) => {
       console.log('[debug] ignorada: o ID deste autor não está em ALLOWED_USER_IDS');
       return;
     }
-    if (!message.content.toLowerCase().startsWith(PREFIX.toLowerCase())) {
-      console.log(
-        `[debug] ignorada: o texto não começa com "${PREFIX}" (se o texto aparece vazio, a Message Content Intent está desligada)`
-      );
+    const content = message.content || '';
+    const hasPrefix = content.toLowerCase().startsWith(PREFIX.toLowerCase());
+
+    if (REQUIRE_PREFIX === 'true' && !hasPrefix) {
+      console.log(`[debug] ignorada: o texto não começa com "${PREFIX}"`);
       return;
     }
 
-    const parsed = parseCall(message.content);
-
-    if (!parsed) {
-      await message.reply(
-        `❌ Formato não reconhecido. Use:\n\`\`\`\n${PREFIX}\nativo: BTCUSDT\ndirecao: LONG\nentrada: 65000\nstop: 64000\nalvo1: 66000\nalvo2: 67000\nobs: opcional\n\`\`\``
-      );
-      return;
-    }
-
+    const body = hasPrefix ? content.slice(PREFIX.length).trim() : content.trim();
     const images = [...message.attachments.values()]
       .filter((a) => a.contentType && a.contentType.startsWith('image/'))
       .map((a) => a.url);
 
-    await sendToTelegram(formatCall(parsed), images);
+    // Nada para enviar (sem texto e sem imagem)
+    if (!body && images.length === 0) {
+      console.log('[debug] ignorada: mensagem sem texto e sem imagem');
+      return;
+    }
+
+    // Se a mensagem tiver os campos de uma call (ativo, entrada, stop...), usa o modelo padrão.
+    // Caso contrário, envia o texto exatamente como foi escrito.
+    const parsed = parseCall(body);
+    const text = parsed ? formatCall(parsed) : escapeHtml(body);
+
+    await sendToTelegram(text, images);
     await message.react('✅');
     console.log(`Call enviada por ${message.author.tag}`);
   } catch (err) {

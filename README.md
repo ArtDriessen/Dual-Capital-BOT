@@ -66,3 +66,9 @@ O bot reage com ✅ na mensagem quando a call foi enviada e com ❌ se houve err
 3. Copie o endereço público do serviço (algo como `https://dual-capital-bot.onrender.com`).
 4. No UptimeRobot (uptimerobot.com, plano gratuito): **Add New Monitor**, tipo **HTTP(s)**, cole o endereço e use intervalo de **5 minutos**.
 O bot responde "Dual Capital bot online" nesse endereço, o que mantém o serviço acordado.
+
+## 6. Prefixo opcional
+Por padrão, **qualquer mensagem** dos admins autorizados nos canais monitorados é enviada ao Telegram (texto e imagens), sem precisar de `!call`.
+- Se a mensagem tiver os campos de uma call (`ativo:`, `entrada:`, `stop:`, `alvo1:`...), ela é formatada no modelo padrão.
+- Caso contrário, o texto é enviado exatamente como foi escrito.
+- Para voltar a exigir o `!call`, crie a variável `REQUIRE_PREFIX` com o valor `true`.
