@@ -50,6 +50,11 @@ const allowedUsers = new Set(
 const escapeHtml = (text) =>
   String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Converte o texto do Discord para o formato HTML do Telegram, mantendo o conteúdo intacto.
+// **negrito** do Discord vira negrito no Telegram; o resto (links, emojis) segue igual.
+const toTelegramHtml = (text) =>
+  escapeHtml(text).replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>');
+
 const normalizeKey = (key) =>
   key
     .normalize('NFD')
@@ -213,10 +218,10 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // Se a mensagem tiver os campos de uma call (ativo, entrada, stop...), usa o modelo padrão.
-    // Caso contrário, envia o texto exatamente como foi escrito.
-    const parsed = parseCall(body);
-    const text = parsed ? formatCall(parsed) : escapeHtml(body);
+    // O modelo padrão só é usado quando a mensagem começa com o prefixo (!call).
+    // Qualquer outra mensagem é enviada exatamente como foi escrita, sem perder nada.
+    const parsed = hasPrefix ? parseCall(body) : null;
+    const text = parsed ? formatCall(parsed) : toTelegramHtml(body);
 
     await sendToTelegram(text, images);
     await message.react('✅');

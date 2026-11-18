@@ -68,7 +68,7 @@ O bot reage com ✅ na mensagem quando a call foi enviada e com ❌ se houve err
 O bot responde "Dual Capital bot online" nesse endereço, o que mantém o serviço acordado.
 
 ## 6. Prefixo opcional
-Por padrão, **qualquer mensagem** dos admins autorizados nos canais monitorados é enviada ao Telegram (texto e imagens), sem precisar de `!call`.
-- Se a mensagem tiver os campos de uma call (`ativo:`, `entrada:`, `stop:`, `alvo1:`...), ela é formatada no modelo padrão.
-- Caso contrário, o texto é enviado exatamente como foi escrito.
-- Para voltar a exigir o `!call`, crie a variável `REQUIRE_PREFIX` com o valor `true`.
+Por padrão, **qualquer mensagem** dos admins autorizados nos canais monitorados é enviada ao Telegram (texto, links e imagens), sem precisar de `!call`.
+- Mensagens normais vão **exatamente como foram escritas**. Só o **negrito** do Discord (`**texto**`) é convertido para negrito do Telegram.
+- Se a mensagem começar com `!call` e tiver os campos (`ativo:`, `entrada:`, `stop:`, `alvo1:`...), ela é formatada no modelo padrão.
+- Para exigir o `!call` em todas as mensagens, crie a variável `REQUIRE_PREFIX` com o valor `true`.
