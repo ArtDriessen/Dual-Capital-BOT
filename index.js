@@ -1,5 +1,17 @@
 require('dotenv').config();
+const http = require('http');
 const { Client, GatewayIntentBits, Events } = require('discord.js');
+
+// Servidor web mínimo para hospedagens gratuitas (ex: Render Web Service).
+// Um monitor externo (UptimeRobot) acessa esse endereço a cada 5 minutos
+// para impedir que o serviço seja colocado para dormir.
+const PORT = process.env.PORT || 3000;
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Dual Capital bot online');
+  })
+  .listen(PORT, () => console.log(`Servidor de status na porta ${PORT}`));
 
 const {
   DISCORD_TOKEN,
