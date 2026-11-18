@@ -181,9 +181,25 @@ client.once(Events.ClientReady, (c) => {
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.author.bot) return;
-    if (!sourceChannels.has(message.channelId)) return;
-    if (!allowedUsers.has(message.author.id)) return;
-    if (!message.content.toLowerCase().startsWith(PREFIX.toLowerCase())) return;
+
+    console.log(
+      `[debug] mensagem recebida | canal=${message.channelId} | autor=${message.author.id} | texto="${(message.content || '').slice(0, 40)}"`
+    );
+
+    if (!sourceChannels.has(message.channelId)) {
+      console.log('[debug] ignorada: o ID deste canal não está em SOURCE_CHANNEL_IDS');
+      return;
+    }
+    if (!allowedUsers.has(message.author.id)) {
+      console.log('[debug] ignorada: o ID deste autor não está em ALLOWED_USER_IDS');
+      return;
+    }
+    if (!message.content.toLowerCase().startsWith(PREFIX.toLowerCase())) {
+      console.log(
+        `[debug] ignorada: o texto não começa com "${PREFIX}" (se o texto aparece vazio, a Message Content Intent está desligada)`
+      );
+      return;
+    }
 
     const parsed = parseCall(message.content);
 
