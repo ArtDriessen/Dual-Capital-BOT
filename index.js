@@ -55,6 +55,15 @@ const escapeHtml = (text) =>
 const toTelegramHtml = (text) =>
   escapeHtml(text).replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>');
 
+// Remove @everyone e @here do texto do Discord. No Telegram, "@everyone" vira
+// a marcação de um usuário/grupo com esse nome, então não deve ser copiado.
+const stripMassMentions = (text) =>
+  text
+    .replace(/@(everyone|here)\b/gi, '')
+    .replace(/[ \t]+$/gm, '') // espaços que sobram no fim das linhas
+    .replace(/\n{3,}/g, '\n\n') // linhas em branco que sobram
+    .trim();
+
 const normalizeKey = (key) =>
   key
     .normalize('NFD')
@@ -199,7 +208,7 @@ client.on(Events.MessageCreate, async (message) => {
       console.log('[debug] ignorada: o ID deste autor não está em ALLOWED_USER_IDS');
       return;
     }
-    const content = message.content || '';
+    const content = stripMassMentions(message.content || '');
     const hasPrefix = content.toLowerCase().startsWith(PREFIX.toLowerCase());
 
     if (REQUIRE_PREFIX === 'true' && !hasPrefix) {
